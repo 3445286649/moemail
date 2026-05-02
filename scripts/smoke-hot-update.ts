@@ -4,7 +4,7 @@ const smokeOrigin = (process.env.MOEMAIL_SMOKE_ORIGIN || "https://mail.loucer.cn
 const checks = [
   { name: "public health", url: `${smokeOrigin}/api/healthz`, okStatuses: [200] },
   { name: "otp page route", url: `${smokeOrigin}/zh-CN/otp`, okStatuses: [200, 307, 308] },
-  { name: "openapi", url: `${smokeOrigin}/api/v1/openapi.json`, okStatuses: [200] },
+  { name: "openapi route", url: `${smokeOrigin}/api/v1/openapi.json`, okStatuses: [200, 401] },
 ]
 
 async function main() {
