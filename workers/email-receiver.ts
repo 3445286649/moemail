@@ -1,14 +1,14 @@
 import { Env } from '../types'
 import { drizzle } from 'drizzle-orm/d1'
-import { messages, emails, webhooks } from '../app/lib/schema'
+import { messages, emails, webhooks, webhookDeliveries } from '../app/lib/schema'
 import { eq, sql } from 'drizzle-orm'
 import PostalMime from 'postal-mime'
 import { WEBHOOK_CONFIG } from '../app/config/webhook'
-import { EmailMessage } from '../app/lib/webhook'
+import { callWebhook, EmailMessage } from '../app/lib/webhook'
 import { applyReceivedMessageSummary } from '../app/lib/email-summary'
 
 const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
-  const db = drizzle(env.DB, { schema: { messages, emails, webhooks } })
+  const db = drizzle(env.DB, { schema: { messages, emails, webhooks, webhookDeliveries } })
 
   const parsedMessage = await PostalMime.parse(message.raw)
   const html = embedInlineImages(parsedMessage.html || '', parsedMessage.attachments || [])
@@ -50,27 +50,37 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
     })
 
     if (webhook?.enabled) {
-      try {
-        await fetch(webhook.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Webhook-Event': WEBHOOK_CONFIG.EVENTS.NEW_MESSAGE
-          },
-          body: JSON.stringify({
-            emailId: targetEmail.id,
-            messageId: savedMessage.id,
-            fromAddress: savedMessage.fromAddress,
-            subject: savedMessage.subject,
-            content: savedMessage.content,
-            html: savedMessage.html,
-            receivedAt: savedMessage.receivedAt.toISOString(),
-            toAddress: targetEmail.address
-          } as EmailMessage)
-        })
-      } catch (error) {
-        console.error('Failed to send webhook:', error)
+      const payload = {
+        event: WEBHOOK_CONFIG.EVENTS.NEW_MESSAGE,
+        data: {
+          emailId: targetEmail.id,
+          messageId: savedMessage.id,
+          fromAddress: savedMessage.fromAddress,
+          subject: savedMessage.subject,
+          content: savedMessage.content,
+          html: savedMessage.html,
+          receivedAt: savedMessage.receivedAt.toISOString(),
+          toAddress: targetEmail.address
+        } as EmailMessage,
       }
+      const result = await callWebhook(webhook.url, payload)
+      const now = new Date()
+      await db.insert(webhookDeliveries).values({
+        webhookId: webhook.id,
+        userId: targetEmail.userId!,
+        messageId: savedMessage.id,
+        emailId: targetEmail.id,
+        event: payload.event,
+        targetUrl: webhook.url,
+        status: result.ok ? 'success' : 'failed',
+        httpStatus: result.status || null,
+        attempts: result.attempts,
+        durationMs: result.durationMs,
+        error: result.error || null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      if (!result.ok) console.error('Failed to send webhook:', result.error)
     }
 
     console.log(`Email processed: ${parsedMessage.subject}`)

@@ -103,6 +103,8 @@ export async function GET(request: Request) {
             { name: "batchId", in: "query", schema: { type: "string" } },
             { name: "recentHours", in: "query", schema: { type: "integer" } },
             { name: "used", in: "query", schema: { type: "boolean" } },
+            { name: "status", in: "query", schema: { type: "string", enum: ["all", "new", "code", "empty", "used"] } },
+            { name: "sort", in: "query", schema: { type: "string", enum: ["activity_desc", "created_desc", "created_asc", "code_first", "used_first"], default: "activity_desc" } },
             { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 300 } },
           ],
           responses: {
@@ -118,6 +120,8 @@ export async function GET(request: Request) {
           ],
           responses: {
             "200": { description: "Latest OTP result", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiSuccess" } } } },
+            "400": { description: "Missing or invalid email parameter", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } } },
+            "401": { description: "Missing or invalid API key", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } } },
             "404": { description: "Inbox not found", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } } },
           },
         },
@@ -148,6 +152,8 @@ export async function GET(request: Request) {
                     ids: { type: "array", items: { type: "string" } },
                     batchId: { type: "string" },
                     q: { type: "string" },
+                    status: { type: "string", enum: ["all", "new", "code", "empty", "used"] },
+                    sort: { type: "string", enum: ["activity_desc", "created_desc", "created_asc", "code_first", "used_first"] },
                     limit: { type: "integer", minimum: 1, maximum: 500 },
                     locale: { type: "string", default: "zh-CN" },
                   },

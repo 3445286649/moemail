@@ -16,6 +16,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+interface WebhookDelivery {
+  id: string
+  status: string
+  event: string
+  httpStatus?: number | null
+  attempts: number
+  durationMs?: number | null
+  error?: string | null
+  createdAt: string | number | Date
+}
+
 export function WebhookConfig() {
   const t = useTranslations("profile.webhook")
   const tCommon = useTranslations("common.actions")
@@ -25,20 +36,31 @@ export function WebhookConfig() {
   const [url, setUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([])
+  const [retryingId, setRetryingId] = useState<string | null>(null)
   const [showDocs, setShowDocs] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const { toast } = useToast()
 
   useEffect(() => {
-    fetch("/api/webhook")
-      .then(res => res.json() as Promise<{ enabled: boolean; url: string }>)
-      .then(data => {
-        setEnabled(data.enabled)
-        setUrl(data.url)
-      })
+    Promise.all([
+      fetch("/api/webhook")
+        .then(res => res.json() as Promise<{ enabled: boolean; url: string }>)
+        .then(data => {
+          setEnabled(data.enabled)
+          setUrl(data.url)
+        }),
+      fetchDeliveries(),
+    ])
       .catch(console.error)
       .finally(() => setInitialLoading(false))
   }, [])
+
+  const fetchDeliveries = async () => {
+    const res = await fetch("/api/webhook/deliveries?limit=10")
+    const data = await res.json().catch(() => ({})) as { deliveries?: WebhookDelivery[] }
+    if (res.ok) setDeliveries(data.deliveries || [])
+  }
 
   if (initialLoading) {
     return (
@@ -99,6 +121,7 @@ export function WebhookConfig() {
         title: t("testSuccess"),
         description: t("testSuccess")
       })
+      await fetchDeliveries()
     } catch (_error) {
       toast({
         title: t("testFailed"),
@@ -107,6 +130,25 @@ export function WebhookConfig() {
       })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const retryDelivery = async (id: string) => {
+    setRetryingId(id)
+    try {
+      const res = await fetch(`/api/webhook/deliveries/${id}/retry`, { method: "POST" })
+      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string }
+      if (!res.ok || !data.success) throw new Error(data.error || "Retry failed")
+      toast({ title: "Webhook 已重发", description: "投递成功" })
+      await fetchDeliveries()
+    } catch (error) {
+      toast({
+        title: "Webhook 重发失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive"
+      })
+    } finally {
+      setRetryingId(null)
     }
   }
 
@@ -170,6 +212,32 @@ export function WebhookConfig() {
             <p className="text-xs text-muted-foreground">
               {t("description2")}
             </p>
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-medium">最近投递</div>
+              <Button type="button" variant="ghost" size="sm" onClick={fetchDeliveries}>刷新</Button>
+            </div>
+            <div className="space-y-2">
+              {deliveries.map(item => (
+                <div key={item.id} className="rounded-md bg-background p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={item.status === "success" ? "text-emerald-600" : "text-red-600"}>
+                      {item.status === "success" ? "成功" : "失败"} · {item.httpStatus || "no-status"} · {item.attempts} 次
+                    </span>
+                    <span className="text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+                  </div>
+                  {item.error && <div className="mt-1 truncate text-muted-foreground">{item.error}</div>}
+                  {item.status !== "success" && (
+                    <Button type="button" variant="outline" size="sm" className="mt-2 h-7" disabled={retryingId === item.id} onClick={() => retryDelivery(item.id)}>
+                      {retryingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "重发"}
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {!deliveries.length && <div className="text-xs text-muted-foreground">暂无投递记录。</div>}
+            </div>
           </div>
 
           <div className="space-y-2">

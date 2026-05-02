@@ -30,8 +30,8 @@ export async function GET() {
       b.updated_at,
       COUNT(e.id) AS email_count,
       SUM(CASE WHEN COALESCE(e.used, 0) = 1 THEN 1 ELSE 0 END) AS used_count,
-      SUM((SELECT COUNT(*) FROM message m WHERE m.emailId = e.id AND (m.type != 'sent' OR m.type IS NULL))) AS message_count,
-      MAX((SELECT m.received_at FROM message m WHERE m.emailId = e.id AND (m.type != 'sent' OR m.type IS NULL) ORDER BY m.received_at DESC, m.id DESC LIMIT 1)) AS latest_received_at
+      COALESCE(SUM(COALESCE(e.message_count, 0)), 0) AS message_count,
+      MAX(e.latest_received_at) AS latest_received_at
     FROM otp_batch b
     LEFT JOIN email e ON e.batch_id = b.id AND e.userId = b.user_id
     WHERE b.user_id = ?

@@ -51,6 +51,7 @@ type CreateMode = "human" | "numeric" | "prefix"
 type UsedFilter = "all" | "used" | "unused"
 type CleanupMode = "test" | "empty" | "olderThan"
 type StatusFilter = "all" | "new" | "code" | "empty" | "used"
+type SortOption = "activity_desc" | "created_desc" | "created_asc" | "code_first" | "used_first"
 
 interface CleanupPreview {
   mode: CleanupMode
@@ -90,6 +91,14 @@ const statusFilterItems: Array<{ key: StatusFilter; label: string; icon: typeof 
   { key: "empty", label: "无邮件", icon: Circle },
   { key: "used", label: "已使用", icon: CheckCircle2 },
 ]
+
+const sortLabels: Record<SortOption, string> = {
+  activity_desc: "最近活动",
+  created_desc: "最新创建",
+  created_asc: "最早创建",
+  code_first: "验证码优先",
+  used_first: "已用优先",
+}
 
 function splitTags(value: string) {
   return Array.from(new Set(value
@@ -162,6 +171,7 @@ export function OtpConsole({ locale, user }: OtpConsoleProps) {
   const [batchFilter, setBatchFilter] = useState("all")
   const [usedFilter, setUsedFilter] = useState<UsedFilter>("all")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [sort, setSort] = useState<SortOption>("activity_desc")
   const [cleanupMode, setCleanupMode] = useState<CleanupMode>("empty")
   const [cleanupDays, setCleanupDays] = useState(7)
   const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(null)
@@ -217,11 +227,12 @@ export function OtpConsole({ locale, user }: OtpConsoleProps) {
     if (usedFilter === "used") params.set("used", "1")
     if (usedFilter === "unused") params.set("used", "0")
     if (statusFilter !== "all") params.set("status", statusFilter)
+    if (sort !== "activity_desc") params.set("sort", sort)
     params.set("limit", String(pageSize))
     params.set("page", String(page))
     Object.entries(extra || {}).forEach(([key, value]) => params.set(key, String(value)))
     return params
-  }, [batchFilter, domainFilter, page, pageSize, query, recentOnly, statusFilter, tagFilter, usedFilter])
+  }, [batchFilter, domainFilter, page, pageSize, query, recentOnly, sort, statusFilter, tagFilter, usedFilter])
   const currentListKey = useMemo(() => buildListQueryParams().toString(), [buildListQueryParams])
 
   const buildListQueryBody = () => ({
@@ -231,6 +242,7 @@ export function OtpConsole({ locale, user }: OtpConsoleProps) {
     batchId: batchFilter !== "all" ? batchFilter : undefined,
     used: usedFilter === "all" ? undefined : usedFilter === "used",
     status: statusFilter !== "all" ? statusFilter : undefined,
+    sort,
     limit: 500,
     locale: "zh-CN",
   })
@@ -354,7 +366,7 @@ export function OtpConsole({ locale, user }: OtpConsoleProps) {
 
   useEffect(() => {
     setPage(1)
-  }, [query, recentOnly, tagFilter, domainFilter, batchFilter, usedFilter, statusFilter])
+  }, [query, recentOnly, tagFilter, domainFilter, batchFilter, usedFilter, statusFilter, sort])
 
   useEffect(() => {
     if (!hydrated) return
@@ -826,6 +838,16 @@ export function OtpConsole({ locale, user }: OtpConsoleProps) {
                       <SelectItem value="used">已用</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={sort} onValueChange={(v) => setSort(v as SortOption)}>
+                    <SelectTrigger className="h-9 w-[124px] border-primary/20 bg-white text-xs text-slate-900 dark:!border-white/10 dark:!bg-slate-950/70 dark:!text-slate-100">
+                      <SelectValue placeholder="排序" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(sortLabels) as SortOption[]).map(key => (
+                        <SelectItem key={key} value={key}>{sortLabels[key]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button variant="outline" onClick={refreshNow} disabled={loading} className="h-9 gap-2 border-primary/20 bg-white text-xs text-slate-800 hover:bg-primary/10 hover:text-slate-950 dark:!border-white/10 dark:!bg-slate-900 dark:!text-slate-200 dark:hover:!bg-slate-800 dark:hover:!text-white">
                     <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />刷新
                   </Button>
@@ -1130,6 +1152,9 @@ function MailboxRow({
           <span className="truncate text-sm text-slate-700 dark:text-slate-300">{item.latestFrom || item.provider || "暂无邮件"}</span>
         </div>
         <div className="mt-1 truncate text-xs text-slate-500">{item.latestSubject || "等待新邮件进入收件箱"}</div>
+        {hasMail && !item.latestCode && item.latestPreview && (
+          <div className="mt-1 line-clamp-1 text-[11px] text-amber-700 dark:text-amber-300">未识别验证码：{item.latestPreview}</div>
+        )}
       </div>
 
       <button onClick={onCopyCode} disabled={!item.latestCode} className={cn("flex h-10 items-center justify-between rounded-lg border px-3 text-left transition", item.latestCode ? "border-violet-400/25 bg-violet-500/14 text-violet-700 dark:text-violet-100 hover:border-violet-300/40" : "border-primary/20 bg-white text-slate-500 dark:!border-white/10 dark:!bg-slate-950/60")}>

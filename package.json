@@ -15,6 +15,8 @@
     "db:migrate-local": "tsx scripts/migrate.ts local",
     "db:migrate-remote": "tsx scripts/migrate.ts remote",
     "db:migrate-remote:safe": "tsx scripts/d1-migrate-safe.ts",
+    "backups:prune": "tsx scripts/prune-backups.ts",
+    "smoke:hot": "tsx scripts/smoke-hot-update.ts",
     "webhook-test-server": "bun run scripts/webhook-test-server.ts",
     "generate-test-data": "wrangler dev scripts/generate-test-data.ts",
     "dev:cleanup": "wrangler dev --config wrangler.cleanup.json --test-scheduled",
@@ -22,7 +24,7 @@
     "deploy:email": "wrangler deploy --config wrangler.email.json",
     "deploy:cleanup": "wrangler deploy --config wrangler.cleanup.json",
     "deploy:pages": "tsx scripts/deploy-pages.ts",
-    "deploy:hot": "pnpm run db:migrate-remote:safe && pnpm run deploy:pages && pnpm run deploy:email && pnpm run deploy:cleanup"
+    "deploy:hot": "pnpm run backups:prune && pnpm run db:migrate-remote:safe && pnpm run deploy:pages && pnpm run deploy:email && pnpm run deploy:cleanup && pnpm run smoke:hot && pnpm run backups:prune"
   },
   "type": "module",
   "dependencies": {

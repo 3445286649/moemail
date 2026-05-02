@@ -6,6 +6,7 @@ import { confidenceFromInteger } from "@/lib/email-summary"
 export const runtime = "edge"
 
 type StatusFilter = "all" | "new" | "code" | "empty" | "used"
+type SortOption = "activity_desc" | "created_desc" | "created_asc" | "code_first" | "used_first"
 
 interface OtpRow {
   id: string
@@ -24,6 +25,7 @@ interface OtpRow {
   latest_code?: string | null
   latest_otp_provider?: string | null
   latest_otp_confidence?: number | null
+  latest_preview?: string | null
   updated_at?: number | null
 }
 
@@ -47,6 +49,7 @@ interface ListQuery {
   limit: number
   offset: number
   status: StatusFilter
+  sort: SortOption
   hasScopedFilters: boolean
 }
 
@@ -57,6 +60,23 @@ function parseTags(value?: string | null) {
 function normalizeStatus(value: string | null): StatusFilter {
   if (value === "new" || value === "code" || value === "empty" || value === "used") return value
   return "all"
+}
+
+function normalizeSort(value: string | null): SortOption {
+  if (value === "created_desc" || value === "created_asc" || value === "code_first" || value === "used_first") return value
+  return "activity_desc"
+}
+
+function orderByFor(sort: SortOption) {
+  if (sort === "created_desc") return "e.created_at DESC, e.id DESC"
+  if (sort === "created_asc") return "e.created_at ASC, e.id ASC"
+  if (sort === "code_first") return "CASE WHEN e.latest_code IS NOT NULL AND e.latest_code != '' THEN 0 ELSE 1 END ASC, COALESCE(e.latest_received_at, e.created_at) DESC, e.id DESC"
+  if (sort === "used_first") return "COALESCE(e.used, 0) DESC, COALESCE(e.latest_received_at, e.created_at) DESC, e.id DESC"
+  return "COALESCE(e.latest_received_at, e.created_at) DESC, e.id DESC"
+}
+
+function normalizePreview(value?: string | null) {
+  return (value || "").replace(/\s+/g, " ").trim().slice(0, 160) || null
 }
 
 function buildListQuery(request: Request, userId: string): ListQuery {
@@ -71,6 +91,7 @@ function buildListQuery(request: Request, userId: string): ListQuery {
   const batchId = (searchParams.get("batchId") || "").trim()
   const used = searchParams.get("used")
   const status = normalizeStatus(searchParams.get("status"))
+  const sort = normalizeSort(searchParams.get("sort"))
   const now = Date.now()
   const since = recentHours > 0 ? now - recentHours * 60 * 60 * 1000 : 0
 
@@ -125,6 +146,7 @@ function buildListQuery(request: Request, userId: string): ListQuery {
     limit,
     offset,
     status,
+    sort,
     hasScopedFilters,
   }
 }
@@ -190,11 +212,17 @@ export async function GET(request: Request) {
       e.latest_code,
       e.latest_otp_provider,
       e.latest_otp_confidence,
+      (
+        SELECT SUBSTR(COALESCE(m.content, ''), 1, 360)
+        FROM message m
+        WHERE m.id = e.latest_message_id AND m.emailId = e.id
+        LIMIT 1
+      ) AS latest_preview,
       e.updated_at
     FROM email e
     LEFT JOIN otp_batch b ON b.id = e.batch_id AND b.user_id = e.userId
     WHERE ${query.where}
-    ORDER BY COALESCE(e.latest_received_at, e.created_at) DESC, e.id DESC
+    ORDER BY ${orderByFor(query.sort)}
     LIMIT ? OFFSET ?
   `).bind(...listBindings).all<OtpRow>()
 
@@ -246,6 +274,7 @@ export async function GET(request: Request) {
     latestCode: row.latest_code,
     provider: row.latest_otp_provider,
     confidence: confidenceFromInteger(row.latest_otp_confidence),
+    latestPreview: normalizePreview(row.latest_preview),
     updatedAt: row.updated_at,
   }))
   const summary = stateSummary(summaryRow, query.status)

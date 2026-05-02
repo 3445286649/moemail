@@ -18,6 +18,7 @@ export interface OtpEmail {
   latestFrom?: string | null
   latestReceivedAt?: number | null
   latestCode?: string | null
+  latestPreview?: string | null
   provider?: string
   confidence?: number
   updatedAt?: number | null

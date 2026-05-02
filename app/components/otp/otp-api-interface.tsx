@@ -39,6 +39,11 @@ const examples = [
   }'`,
   },
   {
+    title: "筛选并排序",
+    code: `curl "$ORIGIN/api/v1/otp/emails?status=code&sort=code_first&limit=50" \\
+  -H "X-API-Key: YOUR_API_KEY"`,
+  },
+  {
     title: "等待验证码",
     code: `curl "$ORIGIN/api/v1/otp/wait?email=NAME@DOMAIN&timeout=60&interval=3" \\
   -H "X-API-Key: YOUR_API_KEY"`,
@@ -109,6 +114,7 @@ export function OtpApiInterface({ canManageApiKey }: { canManageApiKey: boolean 
               <Rule label="Header" value="X-API-Key: YOUR_API_KEY" />
               <Rule label="Success" value="{ success: true, data, meta }" />
               <Rule label="Error" value="{ success: false, error, meta }" />
+              <Rule label="Codes" value="UNAUTHORIZED / VALIDATION_ERROR / WAIT_TIMEOUT" />
             </div>
           </Panel>
 

@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { url } = testSchema.parse(body)
 
-    await callWebhook(url, {
+    const result = await callWebhook(url, {
       event: WEBHOOK_CONFIG.EVENTS.NEW_MESSAGE,
       data: {
         emailId: "123456789",
@@ -28,7 +28,11 @@ export async function POST(request: Request) {
       } as EmailMessage
     })
 
-    return Response.json({ success: true })
+    if (!result.ok) {
+      return Response.json({ error: result.error || "Failed to test webhook", result }, { status: 400 })
+    }
+
+    return Response.json({ success: true, result })
   } catch (error) {
     console.error("Failed to test webhook:", error)
     return Response.json(

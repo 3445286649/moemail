@@ -103,8 +103,11 @@ export const emails = sqliteTable("email", {
   userLatestReceivedIdx: index("email_user_latest_received_idx").on(table.userId, table.latestReceivedAt),
   userExpiresUpdatedIdx: index("email_user_expires_updated_idx").on(table.userId, table.expiresAt, table.updatedAt),
   userActivityIdx: index("email_user_activity_idx").on(table.userId, sql`COALESCE(${table.latestReceivedAt}, ${table.createdAt})`, table.id),
+  userCreatedIdx: index("email_user_created_idx").on(table.userId, table.createdAt, table.id),
   userBatchIdx: index("email_user_batch_idx").on(table.userId, table.batchId),
   userUsedIdx: index("email_user_used_idx").on(table.userId, table.used),
+  userCodeActivityIdx: index("email_user_code_activity_idx").on(table.userId, table.latestCode, sql`COALESCE(${table.latestReceivedAt}, ${table.createdAt})`, table.id),
+  userUsedActivityIdx: index("email_user_used_activity_idx").on(table.userId, table.used, sql`COALESCE(${table.latestReceivedAt}, ${table.createdAt})`, table.id),
   userAddressLowerIdx: index("email_user_address_lower_idx").on(table.userId, sql`LOWER(${table.address})`),
   latestCodeIdx: index("email_latest_code_idx").on(table.latestCode),
 }))
@@ -153,6 +156,33 @@ export const webhooks = sqliteTable('webhook', {
     .$defaultFn(() => new Date()),
 }, (table) => ({
   userIdIdx: index('webhook_user_id_idx').on(table.userId),
+}))
+
+export const webhookDeliveries = sqliteTable('webhook_delivery', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  webhookId: text('webhook_id').references(() => webhooks.id, { onDelete: "set null" }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  messageId: text('message_id').references(() => messages.id, { onDelete: "set null" }),
+  emailId: text('email_id').references(() => emails.id, { onDelete: "set null" }),
+  event: text('event').notNull(),
+  targetUrl: text('target_url').notNull(),
+  status: text('status').notNull(),
+  httpStatus: integer('http_status'),
+  attempts: integer('attempts').notNull().default(1),
+  durationMs: integer('duration_ms'),
+  error: text('error'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (table) => ({
+  userCreatedIdx: index('webhook_delivery_user_created_idx').on(table.userId, table.createdAt),
+  messageIdx: index('webhook_delivery_message_idx').on(table.messageId),
+  statusIdx: index('webhook_delivery_status_idx').on(table.status),
 }))
 
 export const roles = sqliteTable("role", {
