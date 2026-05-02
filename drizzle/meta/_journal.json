@@ -134,6 +134,34 @@
       "when": 1767115268752,
       "tag": "0018_conscious_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1777709000000,
+      "tag": "0019_otp_batch_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1777709100000,
+      "tag": "0020_otp_result_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1777709200000,
+      "tag": "0021_otp_state_performance",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1777709300000,
+      "tag": "0022_mailbox_message_performance",
+      "breakpoints": true
     }
   ]
 }

@@ -44,7 +44,8 @@
     "create": "Create",
     "creating": "Creating...",
     "success": "Email created successfully",
-    "failed": "Failed to create email"
+    "failed": "Failed to create email",
+    "randomName": "random"
   },
   "messages": {
     "received": "Received",

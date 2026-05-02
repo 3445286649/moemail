@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
-import { Settings } from "lucide-react"
+import { CheckCircle2, Settings } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useState, useEffect } from "react"
 import { Role, ROLES } from "@/lib/permissions"
@@ -24,6 +24,7 @@ export function WebsiteConfigPanel() {
   const tCard = useTranslations("profile.card")
   const [defaultRole, setDefaultRole] = useState<string>("")
   const [emailDomains, setEmailDomains] = useState<string>("")
+  const [activeEmailDomains, setActiveEmailDomains] = useState<string[]>([])
   const [adminContact, setAdminContact] = useState<string>("")
   const [maxEmails, setMaxEmails] = useState<string>(EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString())
   const [turnstileEnabled, setTurnstileEnabled] = useState(false)
@@ -44,6 +45,7 @@ export function WebsiteConfigPanel() {
       const data = await res.json() as { 
         defaultRole: Exclude<Role, typeof ROLES.EMPEROR>,
         emailDomains: string,
+        activeEmailDomains?: string,
         adminContact: string,
         maxEmails: string,
         turnstile?: {
@@ -54,12 +56,20 @@ export function WebsiteConfigPanel() {
       }
       setDefaultRole(data.defaultRole)
       setEmailDomains(data.emailDomains)
+      setActiveEmailDomains((data.activeEmailDomains || data.emailDomains || "").split(",").map(item => item.trim()).filter(Boolean))
       setAdminContact(data.adminContact)
       setMaxEmails(data.maxEmails || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString())
       setTurnstileEnabled(Boolean(data.turnstile?.enabled))
       setTurnstileSiteKey(data.turnstile?.siteKey ?? "")
       setTurnstileSecretKey(data.turnstile?.secretKey ?? "")
     }
+  }
+
+  const domainList = emailDomains.split(/[,，;；\s]+/).map(item => item.trim().toLowerCase()).filter(Boolean)
+  const activeDomainSet = new Set(activeEmailDomains)
+
+  const toggleActiveDomain = (domain: string) => {
+    setActiveEmailDomains(prev => prev.includes(domain) ? prev.filter(item => item !== domain) : [...prev, domain])
   }
 
   const handleSave = async () => {
@@ -71,6 +81,7 @@ export function WebsiteConfigPanel() {
         body: JSON.stringify({ 
           defaultRole, 
           emailDomains,
+          activeEmailDomains: activeEmailDomains.filter(domain => emailDomains.split(/[,，;；\s]+/).map(item => item.trim()).filter(Boolean).includes(domain)).join(","),
           adminContact,
           maxEmails: maxEmails || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString(),
           turnstile: {
@@ -125,9 +136,38 @@ export function WebsiteConfigPanel() {
           <div className="flex-1">
             <Input 
               value={emailDomains}
-              onChange={(e) => setEmailDomains(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setEmailDomains(next)
+                const nextDomains = next.split(/[,，;；\s]+/).map(item => item.trim().toLowerCase()).filter(Boolean)
+                setActiveEmailDomains(prev => prev.filter(domain => nextDomains.includes(domain)))
+              }}
               placeholder={t("emailDomainsPlaceholder")}
             />
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-primary/20 bg-muted/30 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <CheckCircle2 className="h-4 w-4 text-primary" />启用生成根域名
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">只有勾选的域名会出现在创建邮箱和 TeamHelper 随机注册里；不影响历史邮箱继续收信。</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setActiveEmailDomains(domainList)}>全选</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setActiveEmailDomains([])}>清空</Button>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {domainList.map(domain => (
+              <label key={domain} className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm transition ${activeDomainSet.has(domain) ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background/50 text-muted-foreground"}`}>
+                <span>@{domain}</span>
+                <Switch checked={activeDomainSet.has(domain)} onCheckedChange={() => toggleActiveDomain(domain)} />
+              </label>
+            ))}
+            {!domainList.length && <div className="text-sm text-muted-foreground">先在上方填写根域名。</div>}
           </div>
         </div>
 

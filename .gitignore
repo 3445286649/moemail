@@ -51,3 +51,9 @@ public/sw.js
 wrangler.json
 wrangler.cleanup.json
 wrangler.email.json
+
+# Local MoeMail gray secrets/backups
+admin.bootstrap.txt
+backups/
+*.bak*
+tmp/server-mail-cache/

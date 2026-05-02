@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { usePathname } from "next/navigation"
 import { Github } from "lucide-react"
@@ -14,9 +15,14 @@ import {
 export function FloatMenu() {
   const t = useTranslations("common")
   const pathname = usePathname()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   
-  // 在分享页面隐藏GitHub悬浮框
-  if (pathname.includes("/shared/")) {
+  // 登录页和分享页都不展示源码悬浮按钮，避免和登录入口混淆。
+  if (!mounted || pathname.includes("/login") || pathname.includes("/shared/")) {
     return null
   }
   

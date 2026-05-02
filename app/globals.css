@@ -95,4 +95,17 @@
   .dark * {
     scrollbar-color: hsl(var(--primary) / 0.3) transparent;
   }
+
+  .dark [data-otp-topbar] a:hover,
+  .dark [data-otp-topbar] button:hover,
+  .dark [data-otp-topbar] button[data-state="open"] {
+    background-color: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark [data-otp-topbar] a[aria-current="page"],
+  .dark [data-otp-topbar] a[data-active="true"] {
+    background-color: rgb(46 16 101 / 0.7) !important;
+    color: rgb(245 243 255) !important;
+  }
 }

@@ -3,6 +3,8 @@ import { createDb } from "@/lib/db"
 import { messages, emails } from "@/lib/schema"
 import { and, eq } from "drizzle-orm"
 import { getUserId } from "@/lib/apiKey"
+import { getRequestContext } from "@cloudflare/next-on-pages"
+import { recomputeEmailSummary } from "@/lib/email-summary"
 export const runtime = "edge"
 
 export async function DELETE(
@@ -45,6 +47,8 @@ export async function DELETE(
     await db.delete(messages)
         .where(eq(messages.id, messageId))
 
+    await recomputeEmailSummary(getRequestContext().env.DB, id)
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Failed to delete email:', error)
@@ -81,15 +85,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         eq(messages.emailId, id)
       )
     })
-    
+
     if (!message) {
       return NextResponse.json(
         { error: "Message not found" },
         { status: 404 }
       )
     }
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       message: {
         id: message.id,
         from_address: message.fromAddress,
@@ -97,8 +101,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         subject: message.subject,
         content: message.content,
         html: message.html,
+        otp_code: message.otpCode,
+        otp_provider: message.otpProvider,
+        otp_confidence: Number(message.otpConfidence || 0) / 100,
         received_at: message.receivedAt.getTime(),
-        sent_at: message.receivedAt.getTime(),
+        sent_at: message.sentAt.getTime(),
         type: message.type as 'received' | 'sent'
       }
     })
@@ -109,4 +116,4 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       { status: 500 }
     )
   }
-} 
+}

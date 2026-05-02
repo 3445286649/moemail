@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import dynamic from "next/dynamic"
 import { User } from "next-auth"
 import { useTranslations, useLocale } from "next-intl"
 import Image from "next/image"
@@ -7,13 +9,28 @@ import { Button } from "@/components/ui/button"
 import { signOut } from "next-auth/react"
 import { Github, Settings, Crown, Sword, User2, Gem, Mail } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { WebhookConfig } from "./webhook-config"
-import { PromotePanel } from "./promote-panel"
-import { EmailServiceConfig } from "./email-service-config"
-import { useRolePermission } from "@/hooks/use-role-permission"
-import { PERMISSIONS } from "@/lib/permissions"
-import { WebsiteConfigPanel } from "./website-config-panel"
-import { ApiKeyPanel } from "./api-key-panel"
+import { hasPermission, PERMISSIONS, type Role } from "@/lib/permissions"
+
+const WebhookConfig = dynamic(() => import("./webhook-config").then(mod => mod.WebhookConfig), {
+  ssr: false,
+  loading: () => <DeferredPanelSkeleton />,
+})
+const PromotePanel = dynamic(() => import("./promote-panel").then(mod => mod.PromotePanel), {
+  ssr: false,
+  loading: () => <DeferredPanelSkeleton />,
+})
+const EmailServiceConfig = dynamic(() => import("./email-service-config").then(mod => mod.EmailServiceConfig), {
+  ssr: false,
+  loading: () => <DeferredPanelSkeleton />,
+})
+const WebsiteConfigPanel = dynamic(() => import("./website-config-panel").then(mod => mod.WebsiteConfigPanel), {
+  ssr: false,
+  loading: () => <DeferredPanelSkeleton />,
+})
+const ApiKeyPanel = dynamic(() => import("./api-key-panel").then(mod => mod.ApiKeyPanel), {
+  ssr: false,
+  loading: () => <DeferredPanelSkeleton />,
+})
 
 interface ProfileCardProps {
   user: User
@@ -65,10 +82,19 @@ export function ProfileCard({ user }: ProfileCardProps) {
   const tNav = useTranslations("common.nav")
   const locale = useLocale()
   const router = useRouter()
-  const { checkPermission } = useRolePermission()
-  const canManageWebhook = checkPermission(PERMISSIONS.MANAGE_WEBHOOK)
-  const canPromote = checkPermission(PERMISSIONS.PROMOTE_USER)
-  const canManageConfig = checkPermission(PERMISSIONS.MANAGE_CONFIG)
+  const [showAdminPanels, setShowAdminPanels] = useState(false)
+  const roleNames = (user.roles || []).map(role => role.name) as Role[]
+  const canManageWebhook = hasPermission(roleNames, PERMISSIONS.MANAGE_WEBHOOK)
+  const canPromote = hasPermission(roleNames, PERMISSIONS.PROMOTE_USER)
+  const canManageConfig = hasPermission(roleNames, PERMISSIONS.MANAGE_CONFIG)
+  const canManageApiKey = hasPermission(roleNames, PERMISSIONS.MANAGE_API_KEY)
+
+  useEffect(() => {
+    const schedule = window.requestIdleCallback || ((callback: IdleRequestCallback) => window.setTimeout(callback, 120))
+    const cancel = window.cancelIdleCallback || window.clearTimeout
+    const id = schedule(() => setShowAdminPanels(true))
+    return () => cancel(id as never)
+  }, [])
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -135,7 +161,7 @@ export function ProfileCard({ user }: ProfileCardProps) {
         </div>
       </div>
 
-      {canManageWebhook && (
+      {showAdminPanels && canManageWebhook && (
         <div className="bg-background rounded-lg border-2 border-primary/20 p-6">
           <div className="flex items-center gap-2 mb-6">
             <Settings className="w-5 h-5 text-primary" />
@@ -145,10 +171,16 @@ export function ProfileCard({ user }: ProfileCardProps) {
         </div>
       )}
 
-      {canManageConfig && <WebsiteConfigPanel />}
-      {canManageConfig && <EmailServiceConfig />}
-      {canPromote && <PromotePanel />}
-      {canManageWebhook && <ApiKeyPanel />}
+      {showAdminPanels ? (
+        <>
+          {canManageConfig && <WebsiteConfigPanel />}
+          {canManageConfig && <EmailServiceConfig />}
+          {canPromote && <PromotePanel />}
+          {canManageApiKey && <ApiKeyPanel canManageApiKeyOverride={canManageApiKey} />}
+        </>
+      ) : (
+        (canManageWebhook || canManageConfig || canPromote || canManageApiKey) && <DeferredPanelSkeleton />
+      )}
 
       <div className="flex flex-col sm:flex-row gap-4 px-1">
         <Button
@@ -168,4 +200,16 @@ export function ProfileCard({ user }: ProfileCardProps) {
       </div>
     </div>
   )
-} 
+}
+
+function DeferredPanelSkeleton() {
+  return (
+    <div className="bg-background rounded-lg border-2 border-primary/20 p-6">
+      <div className="h-5 w-32 rounded bg-muted" />
+      <div className="mt-4 space-y-3">
+        <div className="h-9 rounded bg-muted/70" />
+        <div className="h-9 rounded bg-muted/50" />
+      </div>
+    </div>
+  )
+}

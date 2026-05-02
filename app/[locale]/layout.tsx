@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { zpix } from "../fonts"
 import "../globals.css"
 import { Providers } from "../providers"
+import { auth } from "@/lib/auth"
 
 export const runtime = "edge"
 
@@ -106,6 +107,7 @@ export default async function LocaleLayout({
   }
 
   const messages = await getMessages(locale)
+  const session = await auth()
 
   return (
     <html lang={locale} suppressHydrationWarning>
@@ -132,7 +134,7 @@ export default async function LocaleLayout({
           disableTransitionOnChange={false}
           storageKey="temp-mail-theme"
         >
-          <Providers>
+          <Providers session={session}>
             <NextIntlClientProvider locale={locale} messages={messages}>
               {children}
               <FloatMenu />
@@ -144,4 +146,3 @@ export default async function LocaleLayout({
     </html>
   )
 }
-

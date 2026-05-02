@@ -8,6 +8,8 @@ import { handleApiKeyAuth } from "@/lib/apiKey"
 
 const API_PERMISSIONS: Record<string, Permission> = {
   '/api/emails': PERMISSIONS.MANAGE_EMAIL,
+  '/api/otp': PERMISSIONS.MANAGE_EMAIL,
+  '/api/v1': PERMISSIONS.MANAGE_EMAIL,
   '/api/webhook': PERMISSIONS.MANAGE_WEBHOOK,
   '/api/roles/promote': PERMISSIONS.PROMOTE_USER,
   '/api/config': PERMISSIONS.MANAGE_CONFIG,
@@ -20,6 +22,10 @@ export async function middleware(request: Request) {
 
   if (pathname.startsWith('/api')) {
     if (pathname.startsWith('/api/auth')) {
+      return NextResponse.next()
+    }
+
+    if (pathname === '/api/image-proxy' && request.method === 'GET') {
       return NextResponse.next()
     }
 
@@ -132,6 +138,8 @@ export const config = {
   matcher: [
     '/((?!_next|.*\\..*).*)', // all pages excluding static assets
     '/api/emails/:path*',
+    '/api/otp/:path*',
+    '/api/v1/:path*',
     '/api/webhook/:path*',
     '/api/roles/:path*',
     '/api/config/:path*',

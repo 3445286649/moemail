@@ -10,14 +10,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Languages } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-export function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+  className?: string
+}
+
+export function LanguageSwitcher({ className }: LanguageSwitcherProps = {}) {
   const { locale, locales, switchLocale } = useLocaleSwitcher()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Switch language">
+        <Button variant="ghost" size="icon" aria-label="Switch language" className={cn(className)}>
           <Languages className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>

@@ -1,24 +1,19 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, Share2 } from "lucide-react"
+import { Copy, Loader2, Share2 } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useTheme } from "next-themes"
 import { useToast } from "@/components/ui/use-toast"
 import { ShareMessageDialog } from "./share-message-dialog"
+import { extractOtp } from "@/lib/otp"
+import { useCopy } from "@/hooks/use-copy"
+import { emailFrameStyles, prepareEmailHtml } from "@/lib/email-html"
+import { messageDetailKey, type MailboxMessageDetail, useMailboxStore } from "@/stores/mailbox-store"
 
-interface Message {
-  id: string
-  from_address?: string
-  to_address?: string
-  subject: string
-  content: string
-  html?: string
-  received_at?: number
-  sent_at?: number
-}
+type Message = MailboxMessageDetail
 
 interface MessageViewProps {
   emailId: string
@@ -37,19 +32,30 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("html")
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const { toast } = useToast()
+  const { copyToClipboard } = useCopy()
+  const cacheKey = useMemo(() => messageDetailKey(emailId, messageId, messageType), [emailId, messageId, messageType])
+  const cachedMessage = useMailboxStore((state) => state.messageDetails[cacheKey])
+  const setMessageDetail = useMailboxStore((state) => state.setMessageDetail)
 
   useEffect(() => {
     const fetchMessage = async () => {
+      if (cachedMessage) {
+        setMessage(cachedMessage)
+        setLoading(false)
+        if (!cachedMessage.html) setViewMode("text")
+        return
+      }
+
       try {
         setLoading(true)
         setError(null)
-        
+
         const url = `/api/emails/${emailId}/${messageId}${messageType === 'sent' ? '?type=sent' : ''}`;
-        
+
         const response = await fetch(url)
-        
+
         if (!response.ok) {
           const errorData = await response.json()
           const errorMessage = (errorData as { error?: string }).error || t("loadError")
@@ -61,9 +67,10 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
           })
           return
         }
-        
+
         const data = await response.json() as { message: Message }
         setMessage(data.message)
+        setMessageDetail(cacheKey, data.message)
         if (!data.message.html) {
           setViewMode("text")
         }
@@ -71,7 +78,7 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         const errorMessage = t("networkError")
         setError(errorMessage)
         toast({
-          title: tList("error"), 
+          title: tList("error"),
           description: errorMessage,
           variant: "destructive"
         })
@@ -82,69 +89,28 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
     }
 
     fetchMessage()
-  }, [emailId, messageId, messageType, toast, t, tList])
+  }, [cacheKey, cachedMessage, emailId, messageId, messageType, setMessageDetail, toast, t, tList])
 
-  const updateIframeContent = () => {
+  const updateIframeContent = useCallback(() => {
     if (viewMode === "html" && message?.html && iframeRef.current) {
       const iframe = iframeRef.current
       const doc = iframe.contentDocument || iframe.contentWindow?.document
 
       if (doc) {
+        const isDark = resolvedTheme === "dark"
+        const preparedHtml = prepareEmailHtml(message.html)
+
         doc.open()
         doc.write(`
           <!DOCTYPE html>
           <html>
             <head>
+              <meta name="referrer" content="no-referrer">
               <base target="_blank">
-              <style>
-                html, body {
-                  margin: 0;
-                  padding: 0;
-                  min-height: 100%;
-                  font-family: system-ui, -apple-system, sans-serif;
-                  color: ${theme === 'dark' ? '#fff' : '#000'};
-                  background: ${theme === 'dark' ? '#1a1a1a' : '#fff'};
-                }
-                body {
-                  padding: 20px;
-                }
-                img {
-                  max-width: 100%;
-                  height: auto;
-                }
-                a {
-                  color: #2563eb;
-                }
-                /* 滚动条样式 */
-                ::-webkit-scrollbar {
-                  width: 6px;
-                  height: 6px;
-                }
-                ::-webkit-scrollbar-track {
-                  background: transparent;
-                }
-                ::-webkit-scrollbar-thumb {
-                  background: ${theme === 'dark'
-                    ? 'rgba(130, 109, 217, 0.3)'
-                    : 'rgba(130, 109, 217, 0.2)'};
-                  border-radius: 9999px;
-                  transition: background-color 0.2s;
-                }
-                ::-webkit-scrollbar-thumb:hover {
-                  background: ${theme === 'dark'
-                    ? 'rgba(130, 109, 217, 0.5)'
-                    : 'rgba(130, 109, 217, 0.4)'};
-                }
-                /* Firefox 滚动条 */
-                * {
-                  scrollbar-width: thin;
-                  scrollbar-color: ${theme === 'dark'
-                    ? 'rgba(130, 109, 217, 0.3) transparent'
-                    : 'rgba(130, 109, 217, 0.2) transparent'};
-                }
-              </style>
+              ${preparedHtml.head}
+              <style>${emailFrameStyles(isDark)}</style>
             </head>
-            <body>${message.html}</body>
+            <body data-mail-theme="${isDark ? "dark" : "light"}">${preparedHtml.body}</body>
           </html>
         `)
         doc.close()
@@ -175,12 +141,12 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         }
       }
     }
-  }
+  }, [message?.html, resolvedTheme, viewMode])
 
   // 监听主题变化和内容变化
   useEffect(() => {
-    updateIframeContent()
-  }, [message?.html, viewMode, theme])
+    return updateIframeContent()
+  }, [updateIframeContent])
 
   if (loading) {
     return (
@@ -195,8 +161,8 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
     return (
       <div className="flex flex-col items-center justify-center h-32 text-center">
         <p className="text-sm text-destructive mb-2">{error}</p>
-        <button 
-          onClick={() => window.location.reload()} 
+        <button
+          onClick={() => window.location.reload()}
           className="text-xs text-primary hover:underline"
         >
           {t("retry")}
@@ -207,14 +173,37 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
 
   if (!message) return null
 
+  const otp = extractOtp({
+    subject: message.subject,
+    content: message.content,
+    html: message.html,
+    from: message.from_address,
+  })
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 space-y-3 border-b border-primary/20">
+        {otp.code && (
+          <button
+            onClick={() => copyToClipboard(otp.code || "")}
+            className="w-full rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left transition hover:bg-primary/15"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">自动识别验证码 · {otp.provider}</div>
+                <div className="mt-1 text-4xl font-black tracking-[0.18em] text-primary">{otp.code}</div>
+              </div>
+              <div className="flex items-center gap-1 rounded-full bg-background/80 px-3 py-1 text-xs text-primary">
+                <Copy className="h-3.5 w-3.5" /> 复制
+              </div>
+            </div>
+          </button>
+        )}
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-base font-bold flex-1">{message.subject}</h3>
-          <ShareMessageDialog 
+          <ShareMessageDialog
             emailId={emailId}
-            messageId={message.id} 
+            messageId={message.id}
             messageSubject={message.subject}
             trigger={
               <button className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
@@ -233,7 +222,7 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
           <p>{t("time")}: {new Date(message.sent_at || message.received_at || 0).toLocaleString()}</p>
         </div>
       </div>
-      
+
       {message.html && message.content && (
         <div className="border-b border-primary/20 p-2">
           <RadioGroup
@@ -243,8 +232,8 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
           >
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="html" id="html" />
-              <Label 
-                htmlFor="html" 
+              <Label
+                htmlFor="html"
                 className="text-xs cursor-pointer"
               >
                 {t("htmlFormat")}
@@ -252,8 +241,8 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="text" id="text" />
-              <Label 
-                htmlFor="text" 
+              <Label
+                htmlFor="text"
                 className="text-xs cursor-pointer"
               >
                 {t("textFormat")}
@@ -262,12 +251,12 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
           </RadioGroup>
         </div>
       )}
-      
+
       <div className="flex-1 overflow-auto relative">
         {viewMode === "html" && message.html ? (
           <iframe
             ref={iframeRef}
-            className="absolute inset-0 w-full h-full border-0 bg-transparent"
+            className="absolute inset-0 w-full h-full border-0 bg-white"
             sandbox="allow-same-origin allow-popups"
           />
         ) : (
@@ -278,4 +267,4 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
       </div>
     </div>
   )
-} 
+}

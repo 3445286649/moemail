@@ -9,6 +9,7 @@ import { getRequestContext } from "@cloudflare/next-on-pages"
 import { getUserId } from "@/lib/apiKey"
 import { getUserRole } from "@/lib/auth"
 import { ROLES } from "@/lib/permissions"
+import { resolveActiveEmailDomains } from "@/lib/domain-config"
 
 export const runtime = "edge"
 
@@ -53,12 +54,15 @@ export async function POST(request: Request) {
       )
     }
 
-    const domainString = await env.SITE_CONFIG.get("EMAIL_DOMAINS")
-    const domains = domainString ? domainString.split(',') : ["moemail.app"]
+    const [domainString, activeDomainString] = await Promise.all([
+      env.SITE_CONFIG.get("EMAIL_DOMAINS"),
+      env.SITE_CONFIG.get("ACTIVE_EMAIL_DOMAINS"),
+    ])
+    const domains = resolveActiveEmailDomains(domainString || "moemail.app", activeDomainString)
 
     if (!domains || !domains.includes(domain)) {
       return NextResponse.json(
-        { error: "无效的域名" },
+        { error: "无效的域名或该域名未启用" },
         { status: 400 }
       )
     }

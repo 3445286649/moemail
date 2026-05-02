@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { createDb } from "@/lib/db"
 import { emails, messages } from "@/lib/schema"
-import { eq, and, lt, or, sql, ne, isNull } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { encodeCursor, decodeCursor } from "@/lib/cursor"
 import { getUserId } from "@/lib/apiKey"
 import { checkBasicSendPermission } from "@/lib/send-permissions"
+import { getRequestContext } from "@cloudflare/next-on-pages"
 
 export const runtime = "edge"
 
@@ -44,9 +45,22 @@ export async function DELETE(
       { status: 500 }
     )
   }
-} 
+}
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 30
+
+interface MessageRow {
+  id: string
+  from_address?: string | null
+  to_address?: string | null
+  subject: string
+  type?: string | null
+  received_at?: number | null
+  sent_at?: number | null
+  otp_code?: string | null
+  otp_provider?: string | null
+  otp_confidence?: number | null
+}
 
 export async function GET(
   request: Request,
@@ -57,12 +71,12 @@ export async function GET(
   const messageType = searchParams.get('type')
 
   try {
-    const db = createDb()
     const { id } = await params
 
     const userId = await getUserId()
+    if (!userId) return NextResponse.json({ error: "未授权" }, { status: 401 })
     if (messageType === 'sent') {
-      const permissionResult = await checkBasicSendPermission(userId!)
+      const permissionResult = await checkBasicSendPermission(userId)
       if (!permissionResult.canSend) {
         return NextResponse.json(
           { error: permissionResult.error || "您没有查看发送邮件的权限" },
@@ -71,10 +85,11 @@ export async function GET(
       }
     }
 
+    const db = createDb()
     const email = await db.query.emails.findFirst({
       where: and(
         eq(emails.id, id),
-        eq(emails.userId, userId!)
+        eq(emails.userId, userId)
       )
     })
 
@@ -85,69 +100,74 @@ export async function GET(
       )
     }
 
-    const baseConditions = and(
-      eq(messages.emailId, id),
-      messageType === 'sent' 
-        ? eq(messages.type, "sent") 
-        : or(
-            ne(messages.type, "sent"),
-            isNull(messages.type)
-          )
-    )
-
-    const totalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(messages)
-      .where(baseConditions)
-    const totalCount = Number(totalResult[0].count)
-
-    const conditions = [baseConditions]
-
-    if (cursorStr) {
-      const { timestamp, id } = decodeCursor(cursorStr)
-      const orderByTime = messageType === 'sent' ? messages.sentAt : messages.receivedAt
-      conditions.push(
-        or(
-          lt(orderByTime, new Date(timestamp)),
-          and(
-            eq(orderByTime, new Date(timestamp)),
-            lt(messages.id, id)
-          )
-        )
-      )
+    const env = getRequestContext().env
+    const clauses = ["emailId = ?"]
+    const bindings: Array<string | number> = [id]
+    if (messageType === "sent") {
+      clauses.push("type = 'sent'")
+    } else {
+      clauses.push("(type != 'sent' OR type IS NULL)")
     }
 
-    const orderByTime = messageType === 'sent' ? messages.sentAt : messages.receivedAt
-    
-    const results = await db.query.messages.findMany({
-      where: and(...conditions),
-      orderBy: (messages, { desc }) => [
-        desc(orderByTime),
-        desc(messages.id)
-      ],
-      limit: PAGE_SIZE + 1
-    })
-    
+    if (cursorStr) {
+      const { timestamp, id: cursorId } = decodeCursor(cursorStr)
+      const timeColumn = messageType === "sent" ? "sent_at" : "received_at"
+      clauses.push(`(${timeColumn} < ? OR (${timeColumn} = ? AND id < ?))`)
+      bindings.push(timestamp, timestamp, cursorId)
+    }
+
+    const countClauses = clauses.filter(clause => !clause.includes(" < ? OR"))
+    const countBindings = cursorStr ? bindings.slice(0, -3) : bindings
+    const countPromise = messageType === "sent"
+      ? env.DB.prepare(`SELECT COUNT(*) AS count FROM message WHERE ${countClauses.join(" AND ")}`)
+        .bind(...countBindings)
+        .first<{ count: number }>()
+      : Promise.resolve({ count: email.messageCount || 0 })
+    const timeColumn = messageType === "sent" ? "sent_at" : "received_at"
+    const resultPromise = env.DB.prepare(`
+      SELECT
+        id,
+        from_address,
+        to_address,
+        subject,
+        type,
+        received_at,
+        sent_at,
+        otp_code,
+        otp_provider,
+        otp_confidence
+      FROM message
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY ${timeColumn} DESC, id DESC
+      LIMIT ?
+    `).bind(...bindings, PAGE_SIZE + 1).all<MessageRow>()
+
+    const [totalResult, result] = await Promise.all([countPromise, resultPromise])
+    const results = result.results || []
+    const totalCount = Number(totalResult?.count || 0)
+
     const hasMore = results.length > PAGE_SIZE
-    const nextCursor = hasMore 
+    const nextCursor = hasMore
       ? encodeCursor(
-          messageType === 'sent' 
-            ? results[PAGE_SIZE - 1].sentAt!.getTime()
-            : results[PAGE_SIZE - 1].receivedAt.getTime(),
+          Number(messageType === 'sent'
+            ? results[PAGE_SIZE - 1].sent_at
+            : results[PAGE_SIZE - 1].received_at),
           results[PAGE_SIZE - 1].id
         )
       : null
     const messageList = hasMore ? results.slice(0, PAGE_SIZE) : results
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       messages: messageList.map(msg => ({
         id: msg.id,
-        from_address: msg?.fromAddress,
-        to_address: msg?.toAddress,
+        from_address: msg?.from_address,
+        to_address: msg?.to_address,
         subject: msg.subject,
-        content: msg.content,
-        html: msg.html,
-        sent_at: msg.sentAt?.getTime(),
-        received_at: msg.receivedAt?.getTime()
+        otp_code: msg.otp_code,
+        otp_provider: msg.otp_provider,
+        otp_confidence: Number(msg.otp_confidence || 0) / 100,
+        sent_at: msg.sent_at,
+        received_at: msg.received_at,
       })),
       nextCursor,
       total: totalCount
@@ -159,4 +179,4 @@ export async function GET(
       { status: 500 }
     )
   }
-} 
+}

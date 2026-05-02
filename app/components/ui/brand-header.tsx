@@ -9,12 +9,14 @@ interface BrandHeaderProps {
   title?: string
   subtitle?: string
   ctaText?: string
+  showCta?: boolean
 }
 
 export function BrandHeader({
   title,
   subtitle,
   ctaText,
+  showCta = true,
 }: BrandHeaderProps) {
   const t = useTranslations("emails.shared.brand")
 
@@ -92,19 +94,21 @@ export function BrandHeader({
         </p>
       </div>
 
-      <div className="flex justify-center">
-        <Button
-          asChild
-          size="lg"
-          className="gap-2 bg-primary hover:bg-primary/90 text-white px-8 min-h-10 h-auto py-1"
-        >
-          <Link href="/" target="_blank" rel="noopener noreferrer">
-            <Mail className="w-5 h-5" />
-            {displayCtaText}
-            <ExternalLink className="w-4 h-4" />
-          </Link>
-        </Button>
-      </div>
+      {showCta ? (
+        <div className="flex justify-center">
+          <Button
+            asChild
+            size="lg"
+            className="gap-2 bg-primary hover:bg-primary/90 text-white px-8 min-h-10 h-auto py-1"
+          >
+            <Link href="/" target="_blank" rel="noopener noreferrer">
+              <Mail className="w-5 h-5" />
+              {displayCtaText}
+              <ExternalLink className="w-4 h-4" />
+            </Link>
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

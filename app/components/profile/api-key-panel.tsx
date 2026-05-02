@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,9 +19,6 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useCopy } from "@/hooks/use-copy"
-import { useRolePermission } from "@/hooks/use-role-permission"
-import { PERMISSIONS } from "@/lib/permissions"
-import { useConfig } from "@/hooks/use-config"
 
 type ApiKey = {
   id: string
@@ -32,7 +29,7 @@ type ApiKey = {
   enabled: boolean
 }
 
-export function ApiKeyPanel() {
+export function ApiKeyPanel({ canManageApiKeyOverride }: { canManageApiKeyOverride?: boolean } = {}) {
   const t = useTranslations("profile.apiKey")
   const tCommon = useTranslations("common.actions")
   const tNoPermission = useTranslations("emails.noPermission")
@@ -46,10 +43,9 @@ export function ApiKeyPanel() {
   const { copyToClipboard } = useCopy()
   const [showExamples, setShowExamples] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const { checkPermission } = useRolePermission()
-  const canManageApiKey = checkPermission(PERMISSIONS.MANAGE_API_KEY)
+  const canManageApiKey = Boolean(canManageApiKeyOverride)
 
-  const fetchApiKeys = async () => {
+  const fetchApiKeys = useCallback(async () => {
     try {
       const res = await fetch("/api/api-keys")
       if (!res.ok) throw new Error(t("createFailed"))
@@ -65,15 +61,13 @@ export function ApiKeyPanel() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [t, toast])
 
   useEffect(() => {
     if (canManageApiKey) {
       fetchApiKeys()
     }
-  }, [canManageApiKey])
-
-  const { config } = useConfig()
+  }, [canManageApiKey, fetchApiKeys])
 
   const createApiKey = async () => {
     if (!newKeyName.trim()) return
@@ -249,15 +243,10 @@ export function ApiKeyPanel() {
 
       {
         !canManageApiKey ? (
-          <div className="text-center text-muted-foreground py-8">
-            <p>{tNoPermission("needPermission")}</p>
-            <p className="mt-2">{tNoPermission("contactAdmin")}</p>
-            {
-              config?.adminContact && (
-                <p className="mt-2">{tNoPermission("adminContact")}: {config.adminContact}</p>
-              )
-            }
-          </div>
+	          <div className="text-center text-muted-foreground py-8">
+	            <p>{tNoPermission("needPermission")}</p>
+	            <p className="mt-2">{tNoPermission("contactAdmin")}</p>
+	          </div>
         ) : (
           <div className="space-y-4">
             {isLoading ? (
@@ -322,26 +311,6 @@ export function ApiKeyPanel() {
 
                   {showExamples && (
                     <div className="rounded-lg border bg-card p-4 space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-medium">{t("docs.getConfig")}</div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => copyToClipboard(
-                              `curl ${window.location.protocol}//${window.location.host}/api/config \\
-  -H "X-API-Key: YOUR_API_KEY"`
-                            )}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <pre className="text-xs bg-muted/50 rounded-lg p-4 overflow-x-auto">
-                          {`curl ${window.location.protocol}//${window.location.host}/api/config \\
-  -H "X-API-Key: YOUR_API_KEY"`}
-                        </pre>
-                      </div>
-
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-medium">{t("docs.generateEmail")}</div>
@@ -587,4 +556,4 @@ export function ApiKeyPanel() {
       }
     </div>
   )
-} 
+}

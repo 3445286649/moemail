@@ -5,19 +5,18 @@ import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Copy, Plus, RefreshCw } from "lucide-react"
+import { Copy, Download, Plus, RefreshCw } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { nanoid } from "nanoid"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { EXPIRY_OPTIONS } from "@/types/email"
 import { useCopy } from "@/hooks/use-copy"
 import { useConfig } from "@/hooks/use-config"
 
 interface CreateDialogProps {
   onEmailCreated: () => void
 }
+
+type CreateMode = "human" | "numeric" | "prefix"
 
 export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   const { config } = useConfig()
@@ -26,73 +25,101 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   const tCommon = useTranslations("common.actions")
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [emailName, setEmailName] = useState("")
+  const [prefix, setPrefix] = useState("")
+  const [count, setCount] = useState(1)
+  const [mode, setMode] = useState<CreateMode>("human")
   const [currentDomain, setCurrentDomain] = useState("")
-  const [expiryTime, setExpiryTime] = useState(EXPIRY_OPTIONS[1].value.toString())
+  const [lastCreatedIds, setLastCreatedIds] = useState<string[]>([])
+  const [exporting, setExporting] = useState(false)
   const { toast } = useToast()
   const { copyToClipboard } = useCopy()
 
-  const generateRandomName = () => setEmailName(nanoid(8))
+  const previewName = prefix.trim() || (mode === "human" ? "austinking247" : mode === "numeric" ? "mail123456" : "prefix2048")
 
   const copyEmailAddress = () => {
-    copyToClipboard(`${emailName}@${currentDomain}`)
+    if (!currentDomain) return
+    copyToClipboard(`${previewName}@${currentDomain}`)
+  }
+
+  const downloadMailTxt = async (ids: string[]) => {
+    if (!ids.length) {
+      toast({ title: tList("error"), description: "没有可导出的邮箱" })
+      return
+    }
+
+    setExporting(true)
+    try {
+      const response = await fetch("/api/otp/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, locale: "zh-CN" }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error || "导出失败")
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "mail.txt"
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast({ title: "已下载 mail.txt", description: `共 ${response.headers.get("X-Export-Count") || ids.length} 个邮箱` })
+    } catch (error) {
+      toast({ title: "导出失败", description: error instanceof Error ? error.message : "请稍后重试", variant: "destructive" })
+    } finally {
+      setExporting(false)
+    }
   }
 
   const createEmail = async () => {
-    if (!emailName.trim()) {
-      toast({
-        title: tList("error"),
-        description: t("namePlaceholder"),
-        variant: "destructive"
-      })
+    if (!currentDomain) {
+      toast({ title: tList("error"), description: "未读取到可用域名，请刷新页面后重试", variant: "destructive" })
       return
     }
 
     setLoading(true)
     try {
-      const response = await fetch("/api/emails/generate", {
+      const response = await fetch("/api/otp/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: emailName,
+          prefix,
+          count,
+          mode,
           domain: currentDomain,
-          expiryTime: parseInt(expiryTime)
+          expiryTime: 0,
         })
       })
 
+      const data = await response.json() as { error?: string; count?: number; created?: Array<{ id: string; email?: string; address?: string }> }
       if (!response.ok) {
-        const data = await response.json()
-        toast({
-          title: tList("error"),
-          description: (data as { error: string }).error,
-          variant: "destructive"
-        })
+        toast({ title: tList("error"), description: data.error || "创建失败", variant: "destructive" })
         return
       }
 
-      toast({
-        title: tList("success"),
-        description: t("success")
-      })
+      const createdIds = (data.created || []).map(item => item.id).filter(Boolean)
+      setLastCreatedIds(createdIds)
+      toast({ title: tList("success"), description: `已创建 ${data.count || 1} 个永久邮箱，可下载 mail.txt` })
       onEmailCreated()
-      setOpen(false)
-      setEmailName("")
+      setPrefix("")
+      if (createdIds.length && window.confirm("已创建完成，是否立即下载 mail.txt？")) {
+        await downloadMailTxt(createdIds)
+      }
     } catch {
-      toast({
-        title: tList("error"),
-        description: t("failed"),
-        variant: "destructive"
-      })
+      toast({ title: tList("error"), description: t("failed"), variant: "destructive" })
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if ((config?.emailDomainsArray?.length ?? 0) > 0) {
-      setCurrentDomain(config?.emailDomainsArray[0] ?? "")
-    }
-  }, [config])
+    const domains = config?.activeEmailDomainsArray?.length ? config.activeEmailDomainsArray : (config?.emailDomainsArray?.map(d => d.trim()).filter(Boolean) ?? [])
+    if (domains.length > 0 && (!currentDomain || !domains.includes(currentDomain))) setCurrentDomain(domains[0])
+  }, [config, currentDomain])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -107,82 +134,56 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
           <DialogTitle>{t("title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="flex gap-2">
-            <Input
-              value={emailName}
-              onChange={(e) => setEmailName(e.target.value)}
-              placeholder={t("namePlaceholder")}
-              className="flex-1"
-            />
-            {(config?.emailDomainsArray?.length ?? 0) > 1 && (
-              <Select value={currentDomain} onValueChange={setCurrentDomain}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>数量</Label>
+              <Input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Math.min(Math.max(Number(e.target.value || 1), 1), 50))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>生成规则</Label>
+              <Select value={mode} onValueChange={(value) => setMode(value as CreateMode)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {config?.emailDomainsArray?.map(d => (
-                    <SelectItem key={d} value={d}>@{d}</SelectItem>
-                  ))}
+                  <SelectItem value="human">真实姓名风格</SelectItem>
+                  <SelectItem value="numeric">前缀 + 数字</SelectItem>
+                  <SelectItem value="prefix">指定前缀</SelectItem>
                 </SelectContent>
               </Select>
-            )}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={generateRandomName}
-              type="button"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Label className="shrink-0 text-muted-foreground">{t("expiryTime")}</Label>
-            <RadioGroup
-              value={expiryTime}
-              onValueChange={setExpiryTime}
-              className="flex gap-6"
-            >
-              {EXPIRY_OPTIONS.map((option, index) => {
-                const labels = [t("oneHour"), t("oneDay"), t("threeDays"), t("permanent")]
-                return (
-                  <div key={option.value} className="flex items-center gap-2">
-                    <RadioGroupItem value={option.value.toString()} id={option.value.toString()} />
-                    <Label htmlFor={option.value.toString()} className="cursor-pointer text-sm">
-                      {labels[index]}
-                    </Label>
-                  </div>
-                )
-              })}
-            </RadioGroup>
+          <div className="flex gap-2">
+            <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="前缀可留空，默认生成真实邮箱名" className="flex-1" />
+            {((config?.activeEmailDomainsArray?.length || config?.emailDomainsArray?.length || 0) > 1) && (
+              <Select value={currentDomain} onValueChange={setCurrentDomain}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>{(config?.activeEmailDomainsArray?.length ? config.activeEmailDomainsArray : config?.emailDomainsArray)?.map(d => <SelectItem key={d} value={d}>@{d}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" size="icon" onClick={() => setPrefix("")} type="button"><RefreshCw className="w-4 h-4" /></Button>
           </div>
 
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="shrink-0">{t("domain")}:</span>
-            {emailName ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate">{`${emailName}@${currentDomain}`}</span>
-                <div
-                  className="shrink-0 cursor-pointer hover:text-primary transition-colors"
-                  onClick={copyEmailAddress}
-                >
-                  <Copy className="size-4" />
-                </div>
-              </div>
-            ) : (
-              <span className="text-gray-400">...</span>
-            )}
+          <div className="rounded-xl border border-primary/15 bg-muted/40 p-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0">预览:</span>
+              {currentDomain ? (
+                <button className="flex min-w-0 items-center gap-2 hover:text-primary" onClick={copyEmailAddress}>
+                  <span className="truncate">{`${previewName}@${currentDomain}`}</span>
+                  <Copy className="size-4 shrink-0" />
+                </button>
+              ) : <span>...</span>}
+            </div>
+            <div className="mt-1 text-xs">默认永久有效。批量创建最多 50 个。</div>
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
-            {tCommon("cancel")}
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>{tCommon("cancel")}</Button>
+          <Button variant="outline" onClick={() => downloadMailTxt(lastCreatedIds)} disabled={!lastCreatedIds.length || exporting} className="gap-2">
+            <Download className="h-4 w-4" />下载 mail.txt
           </Button>
-          <Button onClick={createEmail} disabled={loading}>
-            {loading ? t("creating") : t("create")}
-          </Button>
+          <Button onClick={createEmail} disabled={loading || !currentDomain}>{loading ? t("creating") : `创建 ${count} 个`}</Button>
         </div>
       </DialogContent>
     </Dialog>
   )
-} 
+}

@@ -172,6 +172,13 @@ export function SharedEmailPageClient({
     }
   }
 
+  useEffect(() => {
+    if (!selectedMessage && messages.length > 0 && !messageLoading) {
+      fetchMessageDetail(messages[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, selectedMessage, messageLoading])
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto p-4 max-w-7xl">
@@ -188,7 +195,7 @@ export function SharedEmailPageClient({
               return tShared("sharedMailbox")
             }
           })()}
-          ctaText={tShared("createOwnEmail")}
+          showCta={false}
         />
 
         {/* 桌面端双栏布局 */}

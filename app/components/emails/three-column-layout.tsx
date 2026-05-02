@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { EmailList } from "./email-list"
 import { MessageListContainer } from "./message-list-container"
@@ -22,12 +22,24 @@ export function ThreeColumnLayout() {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
   const [selectedMessageType, setSelectedMessageType] = useState<'received' | 'sent'>('received')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true
+    return window.matchMedia("(min-width: 1024px)").matches
+  })
   const { copyToClipboard } = useCopy()
   const { canSend: canSendEmails } = useSendPermission()
 
   const columnClass = "border-2 border-primary/20 bg-background rounded-lg overflow-hidden flex flex-col"
   const headerClass = "p-2 border-b-2 border-primary/20 flex items-center justify-between shrink-0"
   const titleClass = "text-sm font-bold px-2 w-full overflow-hidden"
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)")
+    const handleChange = () => setIsDesktop(media.matches)
+    handleChange()
+    media.addEventListener("change", handleChange)
+    return () => media.removeEventListener("change", handleChange)
+  }, [])
 
   // 移动端视图逻辑
   const getMobileView = () => {
@@ -53,8 +65,8 @@ export function ThreeColumnLayout() {
 
   return (
     <div className="pb-5 pt-20 h-full flex flex-col">
-      {/* 桌面端三栏布局 */}
-      <div className="hidden lg:grid grid-cols-12 gap-4 h-full min-h-0">
+      {isDesktop ? (
+      <div className="grid grid-cols-12 gap-4 h-full min-h-0">
         <div className={cn("col-span-3", columnClass)}>
           <div className={headerClass}>
             <h2 className={titleClass}>{t("myEmails")}</h2>
@@ -124,9 +136,9 @@ export function ThreeColumnLayout() {
           )}
         </div>
       </div>
+      ) : (
 
-      {/* 移动端单栏布局 */}
-      <div className="lg:hidden h-full min-h-0">
+      <div className="h-full min-h-0">
         <div className={cn("h-full", columnClass)}>
           {mobileView === "list" && (
             <>
@@ -205,6 +217,7 @@ export function ThreeColumnLayout() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
-} 
+}

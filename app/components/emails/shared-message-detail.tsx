@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { Loader2 } from "lucide-react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { Copy, Loader2 } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useTheme } from "next-themes"
+import { extractOtp } from "@/lib/otp"
+import { useCopy } from "@/hooks/use-copy"
+import { emailFrameStyles, prepareEmailHtml } from "@/lib/email-html"
 
 interface MessageDetail {
   id: string
@@ -42,7 +45,8 @@ export function SharedMessageDetail({
 }: SharedMessageDetailProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("html")
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
+  const { copyToClipboard } = useCopy()
 
   // 如果没有HTML内容，默认显示文本
   useEffect(() => {
@@ -55,71 +59,26 @@ export function SharedMessageDetail({
     }
   }, [message])
 
-  const updateIframeContent = () => {
+  const updateIframeContent = useCallback(() => {
     if (viewMode === "html" && message?.html && iframeRef.current) {
       const iframe = iframeRef.current
       const doc = iframe.contentDocument || iframe.contentWindow?.document
 
       if (doc) {
+        const isDark = resolvedTheme === "dark"
+        const preparedHtml = prepareEmailHtml(message.html)
+
         doc.open()
         doc.write(`
           <!DOCTYPE html>
           <html>
             <head>
+              <meta name="referrer" content="no-referrer">
               <base target="_blank">
-              <style>
-                html, body {
-                  margin: 0;
-                  padding: 0;
-                  min-height: 100%;
-                  font-family: system-ui, -apple-system, sans-serif;
-                  color: ${theme === "dark" ? "#fff" : "#000"};
-                  background: ${theme === "dark" ? "#1a1a1a" : "#fff"};
-                }
-                body {
-                  padding: 20px;
-                }
-                img {
-                  max-width: 100%;
-                  height: auto;
-                }
-                a {
-                  color: #2563eb;
-                }
-                ::-webkit-scrollbar {
-                  width: 6px;
-                  height: 6px;
-                }
-                ::-webkit-scrollbar-track {
-                  background: transparent;
-                }
-                ::-webkit-scrollbar-thumb {
-                  background: ${
-                    theme === "dark"
-                      ? "rgba(130, 109, 217, 0.3)"
-                      : "rgba(130, 109, 217, 0.2)"
-                  };
-                  border-radius: 9999px;
-                  transition: background-color 0.2s;
-                }
-                ::-webkit-scrollbar-thumb:hover {
-                  background: ${
-                    theme === "dark"
-                      ? "rgba(130, 109, 217, 0.5)"
-                      : "rgba(130, 109, 217, 0.4)"
-                  };
-                }
-                * {
-                  scrollbar-width: thin;
-                  scrollbar-color: ${
-                    theme === "dark"
-                      ? "rgba(130, 109, 217, 0.3) transparent"
-                      : "rgba(130, 109, 217, 0.2) transparent"
-                  };
-                }
-              </style>
+              ${preparedHtml.head}
+              <style>${emailFrameStyles(isDark)}</style>
             </head>
-            <body>${message.html}</body>
+            <body data-mail-theme="${isDark ? "dark" : "light"}">${preparedHtml.body}</body>
           </html>
         `)
         doc.close()
@@ -147,11 +106,11 @@ export function SharedMessageDetail({
         }
       }
     }
-  }
+  }, [message?.html, resolvedTheme, viewMode])
 
   useEffect(() => {
-    updateIframeContent()
-  }, [message?.html, viewMode, theme])
+    return updateIframeContent()
+  }, [updateIframeContent])
 
   if (loading) {
     return (
@@ -170,9 +129,32 @@ export function SharedMessageDetail({
     )
   }
 
+  const otp = extractOtp({
+    subject: message.subject,
+    content: message.content,
+    html: message.html,
+    from: message.from_address,
+  })
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 space-y-3 border-b border-primary/20">
+        {otp.code && (
+          <button
+            onClick={() => copyToClipboard(otp.code || "")}
+            className="w-full rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left transition hover:bg-primary/15"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">自动识别验证码 · {otp.provider}</div>
+                <div className="mt-1 text-4xl font-black tracking-[0.18em] text-primary">{otp.code}</div>
+              </div>
+              <div className="flex items-center gap-1 rounded-full bg-background/80 px-3 py-1 text-xs text-primary">
+                <Copy className="h-3.5 w-3.5" /> 复制
+              </div>
+            </div>
+          </button>
+        )}
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-base font-bold flex-1">{message.subject}</h3>
         </div>
@@ -223,7 +205,7 @@ export function SharedMessageDetail({
         {viewMode === "html" && message.html ? (
           <iframe
             ref={iframeRef}
-            className="absolute inset-0 w-full h-full border-0 bg-transparent"
+            className="absolute inset-0 w-full h-full border-0 bg-white"
             sandbox="allow-same-origin allow-popups"
           />
         ) : message.content ? (
