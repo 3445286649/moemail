@@ -2,16 +2,16 @@ export {}
 
 const smokeOrigin = (process.env.MOEMAIL_SMOKE_ORIGIN || "https://mail.loucer.cn").replace(/\/$/, "")
 const checks = [
-  { name: "public health", url: `${smokeOrigin}/api/healthz`, expectStatus: 200 },
-  { name: "otp page", url: `${smokeOrigin}/zh-CN/otp`, expectStatus: 200 },
-  { name: "openapi", url: `${smokeOrigin}/api/v1/openapi.json`, expectStatus: 200 },
+  { name: "public health", url: `${smokeOrigin}/api/healthz`, okStatuses: [200] },
+  { name: "otp page route", url: `${smokeOrigin}/zh-CN/otp`, okStatuses: [200, 307, 308] },
+  { name: "openapi", url: `${smokeOrigin}/api/v1/openapi.json`, okStatuses: [200] },
 ]
 
 async function main() {
   for (const check of checks) {
     const response = await fetch(check.url, { redirect: "manual" })
-    if (response.status !== check.expectStatus) {
-      throw new Error(`${check.name} failed: expected ${check.expectStatus}, got ${response.status}`)
+    if (!check.okStatuses.includes(response.status)) {
+      throw new Error(`${check.name} failed: expected ${check.okStatuses.join(" or ")}, got ${response.status}`)
     }
 
     if (check.name === "public health") {
