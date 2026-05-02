@@ -1,5 +1,7 @@
 import "dotenv/config"
 import { execFileSync } from "node:child_process"
+import { mkdirSync, writeFileSync } from "node:fs"
+import { resolve } from "node:path"
 
 function gitValue(args: string[], fallback: string) {
   try {
@@ -39,6 +41,12 @@ const env = {
   MOEMAIL_DEPLOY_BRANCH: branch,
   MOEMAIL_DIRTY: dirty,
 }
+
+mkdirSync(resolve("app/generated"), { recursive: true })
+writeFileSync(
+  resolve("app/generated/build-info.ts"),
+  `export const buildInfo = ${JSON.stringify({ commit, branch, dirty }, null, 2)} as const\n`
+)
 
 execFileSync("pnpm", ["run", "build:pages"], {
   env,
