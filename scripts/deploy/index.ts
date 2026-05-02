@@ -199,9 +199,9 @@ const checkAndCreateDatabase = async () => {
  * 迁移数据库
  */
 const migrateDatabase = () => {
-  console.log("📝 Migrating remote database...");
+  console.log("📝 Checking and migrating remote database...");
   try {
-    execSync("pnpm run db:migrate-remote", { stdio: "inherit" });
+    execSync("pnpm run db:migrate-remote:safe", { stdio: "inherit" });
     console.log("✅ Database migration completed successfully");
   } catch (error) {
     console.error("❌ Database migration failed:", error);
@@ -337,7 +337,7 @@ const pushPagesSecret = () => {
     console.log(`📝 Found ${Object.keys(secrets).length} secrets to push:`, Object.keys(secrets).join(', '));
 
     // 使用临时文件推送secrets
-    execSync(`pnpm dlx wrangler pages secret bulk ${runtimeEnvFile}`, { 
+    execSync(`pnpm exec wrangler pages secret bulk ${runtimeEnvFile}`, { 
       stdio: "inherit" 
     });
 
@@ -384,7 +384,7 @@ const deployPages = () => {
 const deployEmailWorker = () => {
   console.log("🚧 Deploying Email Worker...");
   try {
-    execSync("pnpm dlx wrangler deploy --config wrangler.email.json", { stdio: "inherit" });
+    execSync("pnpm exec wrangler deploy --config wrangler.email.json", { stdio: "inherit" });
     console.log("✅ Email Worker deployed successfully");
   } catch (error) {
     console.error("❌ Email Worker deployment failed:", error);
@@ -398,7 +398,7 @@ const deployEmailWorker = () => {
 const deployCleanupWorker = () => {
   console.log("🚧 Deploying Cleanup Worker...");
   try {
-    execSync("pnpm dlx wrangler deploy --config wrangler.cleanup.json", { stdio: "inherit" });
+    execSync("pnpm exec wrangler deploy --config wrangler.cleanup.json", { stdio: "inherit" });
     console.log("✅ Cleanup Worker deployed successfully");
   } catch (error) {
     console.error("❌ Cleanup Worker deployment failed:", error);

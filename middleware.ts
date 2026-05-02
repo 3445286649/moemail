@@ -21,6 +21,10 @@ export async function middleware(request: Request) {
   const pathname = url.pathname
 
   if (pathname.startsWith('/api')) {
+    if (pathname === '/api/healthz' && (request.method === 'GET' || request.method === 'HEAD')) {
+      return NextResponse.next()
+    }
+
     if (pathname.startsWith('/api/auth')) {
       return NextResponse.next()
     }
